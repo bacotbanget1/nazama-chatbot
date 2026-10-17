@@ -31,7 +31,6 @@
     overflow: hidden;
   }
 
-  /* Animated background */
   body::before {
     content: '';
     position: fixed;
@@ -43,7 +42,6 @@
     z-index: 0;
   }
 
-  /* Header */
   .header {
     position: relative;
     z-index: 10;
@@ -92,7 +90,6 @@
     50% { opacity: 0.4; }
   }
 
-  /* Chat area */
   .chat-area {
     flex: 1;
     overflow-y: auto;
@@ -108,7 +105,6 @@
   .chat-area::-webkit-scrollbar-track { background: transparent; }
   .chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-  /* Welcome */
   .welcome {
     text-align: center;
     padding: 40px 20px;
@@ -137,7 +133,6 @@
     font-family: 'DM Mono', monospace;
   }
 
-  /* Messages */
   .message {
     display: flex;
     gap: 10px;
@@ -177,6 +172,8 @@
     font-size: 14px;
     line-height: 1.65;
     position: relative;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .bubble.user {
@@ -195,7 +192,14 @@
     font-size: 13px;
   }
 
-  /* Typing indicator */
+  .bubble.error {
+    background: rgba(250,109,109,0.1);
+    border: 1px solid rgba(250,109,109,0.3);
+    color: #fa9090;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+  }
+
   .typing {
     display: flex;
     gap: 5px;
@@ -218,7 +222,6 @@
     30% { transform: translateY(-6px); background: var(--accent); }
   }
 
-  /* Input area */
   .input-area {
     position: relative;
     z-index: 10;
@@ -284,17 +287,6 @@
     margin-top: 8px;
     font-family: 'DM Mono', monospace;
   }
-
-  /* Error */
-  .error-msg {
-    background: rgba(250,109,109,0.1);
-    border: 1px solid rgba(250,109,109,0.3);
-    color: #fa9090;
-    padding: 10px 14px;
-    border-radius: 10px;
-    font-size: 12px;
-    font-family: 'DM Mono', monospace;
-  }
 </style>
 </head>
 <body>
@@ -303,7 +295,7 @@
   <div class="header-icon">✦</div>
   <div>
     <div class="header-title">Gemini AI</div>
-    <div class="header-sub">gemini-2.5-flash · free tier</div>
+    <div class="header-sub">gemini-1.5-flash · free tier</div>
   </div>
   <div class="status-dot"></div>
 </div>
@@ -328,7 +320,7 @@
 
 <script>
 const API_KEY = "AIzaSyDohpxL2GUAejOv1aJrmjzI93-IKdaVleU";
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 const chatArea = document.getElementById('chatArea');
 const msgInput = document.getElementById('msgInput');
@@ -337,13 +329,11 @@ const welcome = document.getElementById('welcome');
 
 let isLoading = false;
 
-// Auto resize textarea
 msgInput.addEventListener('input', () => {
   msgInput.style.height = 'auto';
   msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px';
 });
 
-// Enter to send
 msgInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
@@ -351,7 +341,7 @@ msgInput.addEventListener('keydown', (e) => {
   }
 });
 
-function addMessage(text, isUser) {
+function addMessage(text, isUser, isError = false) {
   if (welcome) welcome.style.display = 'none';
   
   const msg = document.createElement('div');
@@ -359,10 +349,10 @@ function addMessage(text, isUser) {
   
   const avatar = document.createElement('div');
   avatar.className = `avatar ${isUser ? 'user-av' : 'ai-av'}`;
-  avatar.textContent = isUser ? '👤' : '✦';
+  avatar.textContent = isUser ? '👤' : (isError ? '⚠️' : '✦');
   
   const bubble = document.createElement('div');
-  bubble.className = `bubble ${isUser ? 'user' : 'ai'}`;
+  bubble.className = `bubble ${isUser ? 'user' : 'ai'} ${isError ? 'error' : ''}`;
   bubble.textContent = text;
   
   msg.appendChild(avatar);
@@ -411,30 +401,35 @@ async function sendMessage() {
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text }] }]
+        contents: [{
+          parts: [{ text }]
+        }]
       })
     });
     
     const data = await res.json();
     removeTyping();
     
-    if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-      addMessage(data.candidates[0].content.parts[0].text, false);
-    } else if (data?.error?.message) {
-      addMessage('⚠️ Error: ' + data.error.message, false);
-    } else {
-      addMessage('⚠️ Tidak ada respons dari API.', false);
+    if (!res.ok) {
+      const errMsg = data.error?.message || `HTTP ${res.status}: Gagal memproses permintaan`;
+      addMessage(errMsg, false, true);
+      return;
     }
+    
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Tidak ada balasan dari model.';
+    addMessage(reply, false);
   } catch (err) {
     removeTyping();
-    addMessage('⚠️ Gagal terhubung: ' + err.message, false);
+    addMessage(`Terjadi kesalahan jaringan atau koneksi: ${err.message}`, false, true);
+  } finally {
+    isLoading = false;
+    sendBtn.disabled = false;
+    msgInput.focus();
   }
-  
-  isLoading = false;
-  sendBtn.disabled = false;
-  msgInput.focus();
 }
 </script>
 </body>
